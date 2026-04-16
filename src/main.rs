@@ -61,7 +61,7 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let mode = args.mode.clone().unwrap_or_else(|| {
-        println!("🦘 Hoppy QUIC v0.2.3");
+        println!("🦘 Hoppy QUIC v0.2.5");
         println!("--------------------");
         println!("Выберите режим: 1) Server 2) Client");
         let mut input = String::new();
@@ -73,11 +73,11 @@ async fn main() -> Result<()> {
 
     if mode == "server" {
         let port = args.remote.unwrap_or_else(|| {
-            println!("Введите порт сервера (UDP, по умолчанию 8844):");
+            println!("Введите порт сервера (UDP, по умолчанию 1935):");
             let mut p = String::new();
             std::io::stdin().read_line(&mut p).unwrap();
             let p = p.trim();
-            if p.is_empty() { "8844".into() } else { p.into() }
+            if p.is_empty() { "1935".into() } else { p.into() }
         });
         run_server(&port, key).await?;
     } else {
@@ -123,14 +123,13 @@ async fn run_server(port: &str, key: Vec<u8>) -> Result<()> {
 async fn handle_connection(conn: quinn::Connecting, key: Vec<u8>) -> Result<()> {
     let connection = conn.await?;
     loop {
-        let (mut send, mut recv) = connection.accept_bi().await?;
+        let (send, mut recv) = connection.accept_bi().await?;
         let key_clone = key.clone();
         
         tokio::spawn(async move {
             let mut auth_buf = [0u8; 17];
             if recv.read_exact(&mut auth_buf).await.is_err() { return; }
             
-            // Расшифровываем авторизационный заголовок
             xor_cipher(&mut auth_buf, &key_clone);
 
             if &auth_buf[0..16] == AUTH_TOKEN {
@@ -141,7 +140,7 @@ async fn handle_connection(conn: quinn::Connecting, key: Vec<u8>) -> Result<()> 
 
                 let target = String::from_utf8_lossy(&addr_buf).to_string();
                 if let Ok(mut target_stream) = TcpStream::connect(&target).await {
-                    let (mut tcp_read, mut tcp_write) = target_stream.split();
+                    let (tcp_read, tcp_write) = target_stream.split();
                     let k1 = key_clone.clone();
                     let k2 = key_clone.clone();
                     let _ = tokio::join!(
@@ -179,21 +178,19 @@ async fn run_client(local_addr: &str, server_addr: &str, key: Vec<u8>, sni_pool:
         tokio::spawn(async move {
             if let Ok(target) = handle_socks5(&mut local_socket).await {
                 println!("🔗 [{}] -> {}", sni, target);
-                if let Ok((mut q_send, mut q_recv)) = conn.open_bi().await {
+                if let Ok((mut q_send, q_recv)) = conn.open_bi().await {
                     let mut header = Vec::new();
                     header.extend_from_slice(AUTH_TOKEN);
                     let addr_bytes = target.as_bytes();
                     header.push(addr_bytes.len() as u8);
                     
-                    // Шифруем заголовок (токен + адрес)
                     xor_cipher(&mut header, &key_clone);
                     
-                    // Шифруем сам адрес отдельно (так как он в отдельном буфере)
                     let mut encrypted_addr = addr_bytes.to_vec();
                     xor_cipher(&mut encrypted_addr, &key_clone);
 
                     if q_send.write_all(&header).await.is_ok() && q_send.write_all(&encrypted_addr).await.is_ok() {
-                        let (mut tcp_read, mut tcp_write) = local_socket.split();
+                        let (tcp_read, tcp_write) = local_socket.split();
                         let k1 = key_clone.clone();
                         let k2 = key_clone.clone();
                         let _ = tokio::join!(
