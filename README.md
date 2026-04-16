@@ -22,7 +22,7 @@ Zero-Config: Сервер автоматически генерирует сер
 
 Для запуска на вашем VPS (Ubuntu/Debian):
 
-Скачайте репозиторий: git clone https://github.com/ВАШ_НИК/hoppy.git && cd hoppy
+Скачайте репозиторий: git clone https://github.com/nomad-hoppy/hoppy.git && cd hoppy
 
 Запустите скрипт установки: bash install_vps.sh
 
